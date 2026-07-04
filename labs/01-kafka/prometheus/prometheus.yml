@@ -1,0 +1,7 @@
+global:
+  scrape_interval: 5s          # scrape every 5s so the lag graph updates near-real-time
+
+scrape_configs:
+  - job_name: kafka-exporter
+    static_configs:
+      - targets: ["kafka-exporter:9308"]   # the exporter service on the compose network

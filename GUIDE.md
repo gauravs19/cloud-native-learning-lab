@@ -1209,6 +1209,51 @@ count, which just sit idle.
 
 ✅ **CHECKPOINT A2.** You watched lag build under a fast stream and drain after scaling consumers.
 
+### Exercise 4.2c — Live lag graph in Grafana (a taste of v3)
+
+Kafka UI shows the *current* lag number (you refresh to update it). To **watch lag rise and fall as
+a live line chart**, add the OSS observability trio — it's a preview of Lab 3:
+
+- **kafka-exporter** (`danielqsj/kafka-exporter`) — reads consumer lag from the broker and publishes
+  it as **Prometheus** metrics (`kafka_consumergroup_lag{consumergroup,topic,partition}`).
+- **Prometheus** — scrapes the exporter every 5s and stores the numbers as a time series.
+- **Grafana** — a dashboard that plots those numbers, auto-refreshing every 5s.
+
+These are already wired into `docker-compose.yml` (services `kafka-exporter`, `prometheus`,
+`grafana`) plus config under `prometheus/` and `grafana/`.
+
+▶️ **Do — start the observability services:**
+```powershell
+docker compose up -d kafka-exporter prometheus grafana
+```
+
+▶️ **Do — open Grafana** (no login needed) → **http://localhost:3000** → dashboard **"Kafka Consumer
+Lag"** (it's pre-provisioned).
+
+▶️ **Do — start a stream and watch the graph move:**
+```powershell
+curl.exe -X POST "http://localhost:8000/stream?rate=250&seconds=120"
+```
+👀 **Expect.** The **"Consumer lag per partition"** line climbs live; the **"Total lag"** stat goes
+green → orange → red as it grows.
+
+▶️ **Do — drain it and watch the line fall:**
+```powershell
+docker compose up -d --scale consumer=3
+```
+👀 **Expect.** The lag line bends over and drops back toward 0 as 3 consumers clear the backlog —
+**real-time backpressure, visualized.**
+
+🧠 **How it fits the pillars.** This is the **metrics** pillar of observability (FOUNDATIONS §8):
+app/broker state → Prometheus (store) → Grafana (visualize). Lab 3 (v3) expands this to logs (Loki)
+and traces (OpenTelemetry), and connects the same lag signal to **KEDA autoscaling** (v1.1).
+
+> **Data source note:** the lag series only appears once the `events` topic exists and the
+> `event-consumers` group has consumed at least once. If the Grafana panel is empty, produce some
+> events first (Experiment A) and give Prometheus ~10s to scrape.
+
+✅ **CHECKPOINT A2c.** You watched consumer lag change in real time on a Grafana line chart.
+
 ### Exercise 4.3 — EXPERIMENT B: scale consumers, watch rebalancing
 
 ▶️ **Do.** Scale to 3 (topic has 3 partitions → perfect 1:1):

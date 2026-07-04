@@ -63,3 +63,38 @@ services:
       - "8081:8081"        # the boot UI, in your browser at http://localhost:8081
     depends_on:
       - kafka
+
+  # ---- observability: live consumer-lag graph (preview of v3) ----
+  kafka-exporter:
+    image: danielqsj/kafka-exporter:latest
+    container_name: kafka-exporter
+    command: ["--kafka.server=kafka:9092"]   # scrape lag straight from the broker
+    ports:
+      - "9308:9308"        # exposes Prometheus metrics (kafka_consumergroup_lag …)
+    depends_on:
+      - kafka
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"        # Prometheus UI (query metrics directly if you like)
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - kafka-exporter
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"        # the live lag dashboard: http://localhost:3000
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"    # no login for the lab
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
