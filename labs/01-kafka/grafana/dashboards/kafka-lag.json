@@ -11,20 +11,14 @@
   "timezone": "browser",
   "title": "Kafka · Consumer Lag & Throughput",
   "uid": "kafka-lag",
-  "version": 2,
+  "version": 3,
   "panels": [
-    {
-      "type": "row",
-      "title": "Overview",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
-      "collapsed": false
-    },
     {
       "type": "stat",
       "title": "Total lag",
-      "description": "Messages produced but not yet consumed by the group. Rises when producers outpace consumers.",
+      "description": "Messages produced but not yet consumed. Rises when producers outpace consumers.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 1 },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
       "fieldConfig": { "defaults": {
         "unit": "short",
         "color": { "mode": "thresholds" },
@@ -40,9 +34,9 @@
     {
       "type": "stat",
       "title": "Produce rate",
-      "description": "Messages/sec being written to the topic (rate of the partition high-watermark).",
+      "description": "Messages/sec written to the topic (rate of the partition high-watermark).",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "cps", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "#3D71D9" } } },
       "options": { "colorMode": "value", "graphMode": "area", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(kafka_topic_partition_current_offset{topic=\"events\"}[1m]))", "refId": "A" } ]
@@ -50,9 +44,9 @@
     {
       "type": "stat",
       "title": "Consume rate",
-      "description": "Messages/sec being processed by the consumer group (rate of committed offsets).",
+      "description": "Messages/sec processed by the consumer group (rate of committed offsets).",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "cps", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "#56A64B" } } },
       "options": { "colorMode": "value", "graphMode": "area", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(kafka_consumergroup_current_offset{consumergroup=\"event-consumers\",topic=\"events\"}[1m]))", "refId": "A" } ]
@@ -60,24 +54,19 @@
     {
       "type": "stat",
       "title": "Consumers",
-      "description": "Active members in the group. Scale the consumer and watch this step up — consume rate should follow.",
+      "description": "Active members in the group. Scale the consumer and watch this step up.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "short", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "#B877D9" } } },
       "options": { "colorMode": "value", "graphMode": "none", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"] } },
       "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max(kafka_consumergroup_members{consumergroup=\"event-consumers\"})", "refId": "A" } ]
     },
     {
-      "type": "row",
-      "title": "Throughput — the cause",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 }
-    },
-    {
       "type": "timeseries",
-      "title": "Produce vs Consume  (msg/sec)",
-      "description": "When Produced (blue) is above Consumed (green), the gap is exactly how fast lag grows. Scale consumers to lift the green line above blue and drain the backlog.",
+      "title": "Produce vs Consume  (msg/sec)  ·  the cause",
+      "description": "When Produced (blue) is above Consumed (green), the gap is how fast lag grows. Scale consumers to lift green above blue and drain the backlog.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 7 },
+      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 4 },
       "fieldConfig": {
         "defaults": {
           "unit": "cps",
@@ -89,23 +78,18 @@
           { "matcher": { "id": "byName", "options": "Consumed" }, "properties": [ { "id": "color", "value": { "mode": "fixed", "fixedColor": "#56A64B" } } ] }
         ]
       },
-      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["last", "max", "mean"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(kafka_topic_partition_current_offset{topic=\"events\"}[1m]))", "legendFormat": "Produced", "refId": "A" },
         { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(kafka_consumergroup_current_offset{consumergroup=\"event-consumers\",topic=\"events\"}[1m]))", "legendFormat": "Consumed", "refId": "B" }
       ]
     },
     {
-      "type": "row",
-      "title": "Lag — the effect",
-      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 }
-    },
-    {
       "type": "timeseries",
-      "title": "Total consumer lag",
+      "title": "Total consumer lag  ·  the effect",
       "description": "The accumulated backlog. Climbs while produce > consume, falls once consumers catch up.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 16, "x": 0, "y": 17 },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 4 },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -120,10 +104,27 @@
     },
     {
       "type": "timeseries",
-      "title": "Consumer group members",
-      "description": "Steps up when you scale the consumer. Watch it correlate with a jump in consume rate and a fall in lag.",
+      "title": "Lag by partition",
+      "description": "Per-partition backlog. With N consumers ≤ partitions, watch them drain in parallel as you scale.",
       "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 17 },
+      "gridPos": { "h": 7, "w": 16, "x": 0, "y": 12 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 12, "gradientMode": "opacity", "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "kafka_consumergroup_lag{consumergroup=\"event-consumers\"}", "legendFormat": "partition {{partition}}", "refId": "A" } ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Consumer group members",
+      "description": "Steps up when you scale. Correlate with a jump in consume rate and a fall in lag.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 8, "x": 16, "y": 12 },
       "fieldConfig": {
         "defaults": {
           "unit": "short",
@@ -135,23 +136,6 @@
       },
       "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } },
       "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "max(kafka_consumergroup_members{consumergroup=\"event-consumers\"})", "legendFormat": "Members", "refId": "A" } ]
-    },
-    {
-      "type": "timeseries",
-      "title": "Lag by partition",
-      "description": "Per-partition backlog. With N consumers ≤ partitions, each consumer owns a partition; watch them drain in parallel as you scale.",
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 25 },
-      "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "min": 0,
-          "custom": { "drawStyle": "line", "lineInterpolation": "smooth", "lineWidth": 2, "fillOpacity": 12, "gradientMode": "opacity", "showPoints": "never", "stacking": { "mode": "none" } }
-        },
-        "overrides": []
-      },
-      "options": { "legend": { "displayMode": "table", "placement": "right", "calcs": ["last", "max"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "kafka_consumergroup_lag{consumergroup=\"event-consumers\"}", "legendFormat": "partition {{partition}}", "refId": "A" } ]
     }
   ]
 }
