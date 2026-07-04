@@ -62,7 +62,8 @@ cloud-native-learning-lab/
 │   ├── 01-kafka/                  ← LAB 1 (v1.x)
 │   │   ├── docker-compose.yml
 │   │   ├── producer/              ← Python FastAPI producer
-│   │   ├── consumer/              ← Spring Boot consumer
+│   │   ├── consumer/              ← Spring Boot consumer (Gradle)
+│   │   ├── admin-server/          ← Spring Boot Admin UI (monitors the consumer)
 │   │   └── k8s/                   ← kind manifests
 │   ├── 02-spring-microservices/   ← LAB 2 (v2.x)
 │   └── 03-observability/          ← LAB 3 (v3.x)
@@ -147,9 +148,19 @@ get the same treatment when we reach them.
   provides `@KafkaListener`, which handles polling, offset commits, and **rebalancing** for you —
   so you observe rebalancing rather than hand-code it. *Why:* the standard, OSS way to consume Kafka
   in Spring.
-- **Maven.** *What:* Java build/dependency tool. *Job here:* downloads dependencies and builds the
-  runnable jar (driven by `pom.xml`). *Why:* the most common Java build tool; the multi-stage
-  Dockerfile runs it for you.
+- **Gradle.** *What:* a modern Java build/dependency tool using a concise Groovy/Kotlin build script
+  (`build.gradle`). *Job here:* downloads dependencies and builds the runnable Spring Boot jar via the
+  `bootJar` task. *Why:* fast (incremental builds, build cache), less verbose than Maven's XML, and
+  first-class Spring Boot support; the multi-stage Dockerfile runs it for you (no local install needed).
+- **Spring Boot Actuator.** *What:* a Spring Boot module that exposes operational HTTP endpoints
+  (`/actuator/health`, `/actuator/metrics`, `/actuator/loggers`, `/actuator/env`, …). *Job here:*
+  makes the consumer's internals inspectable — and is what Spring Boot Admin reads. *Why:* the
+  standard way to make a Spring service observable; also the foundation for Lab 3.
+- **Spring Boot Admin (de.codecentric).** *What:* a free/OSS web UI that aggregates the Actuator
+  endpoints of your Spring Boot apps into a live dashboard. *Job here:* your **"boot UI"** — watch the
+  consumer's health, JVM metrics, log levels, threads, and environment in the browser, and see each
+  instance appear/disappear as you scale. *Why:* the Spring counterpart to Kafka UI — turns the
+  consumer's internal state into something you can see (keeps with "learn by observing").
 
 ### Kubernetes (Phase 5)
 
@@ -172,9 +183,10 @@ get the same treatment when we reach them.
 
 > **How they fit together (Lab 1):** you run `curl.exe` → hits the **FastAPI** producer (Python) →
 > which uses **confluent-kafka** to publish to **Apache Kafka** → the **Spring Boot** consumer
-> (`@KafkaListener` via **spring-kafka**) reads and prints which partition/pod handled it → you
-> watch it all in **Kafka UI**. Phases 1–4 run these as **Docker** containers; Phase 5 runs them as
-> **Kubernetes** pods on a **kind** cluster.
+> (`@KafkaListener` via **spring-kafka**) reads and prints which partition/pod handled it. You watch
+> the **broker** side in **Kafka UI** (topics, partitions, lag) and the **consumer** side in the
+> **boot UI** / Spring Boot Admin (health, metrics, instances). Phases 1–4 run everything as
+> **Docker** containers; Phase 5 runs them as **Kubernetes** pods on a **kind** cluster.
 
 ---
 ---
@@ -679,67 +691,73 @@ every time**; different key → possibly a different partition.
 
 ### Exercise 3.1 — Create the consumer project
 
-📄 **What this file is:** Maven's project descriptor. It declares the project's identity, its Java
-version, its dependencies, and how to build it. Maven reads `pom.xml` to download libraries and
-produce the runnable jar.
+📄 **What these files are:** Gradle's build scripts. `build.gradle` declares the project's plugins,
+Java version, dependencies, and how to build it; `settings.gradle` names the project. Gradle reads
+them to download libraries and produce the runnable Spring Boot jar (via the `bootJar` task).
 
-▶️ **Do.** Create `consumer/pom.xml`:
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
+▶️ **Do.** Create `consumer/settings.gradle`:
+```groovy
+rootProject.name = 'consumer'
+```
 
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.4</version>
-        <relativePath/>
-    </parent>
+▶️ **Do.** Create `consumer/build.gradle`:
+```groovy
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.3.4'
+    id 'io.spring.dependency-management' version '1.1.6'
+}
 
-    <groupId>com.example</groupId>
-    <artifactId>consumer</artifactId>
-    <version>1.0.0</version>
-    <properties>
-        <java.version>21</java.version>
-    </properties>
+group = 'com.example'
+version = '1.0.0'
 
-    <dependencies>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.kafka</groupId>
-            <artifactId>spring-kafka</artifactId>
-        </dependency>
-    </dependencies>
+java {
+    sourceCompatibility = '21'   // compile & run on Java 21 (LTS)
+}
 
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-            </plugin>
-        </plugins>
-    </build>
-</project>
+repositories {
+    mavenCentral()
+}
+
+ext {
+    springBootAdminVersion = '3.3.6'   // matches Spring Boot 3.3.x
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'          // serves Actuator over HTTP
+    implementation 'org.springframework.kafka:spring-kafka'                     // @KafkaListener support
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'     // operational endpoints
+    implementation "de.codecentric:spring-boot-admin-starter-client:${springBootAdminVersion}"  // registers with the Boot Admin UI
+}
 ```
 🧠 **Section by section:**
-- `<parent> spring-boot-starter-parent 3.3.4` — inherits Spring Boot's curated dependency versions,
-  so you *don't* specify a version for `spring-kafka` (the parent picks a compatible one). This is
-  why the deps below have no `<version>`.
-- `<groupId>/<artifactId>/<version>` — this project's identity (`com.example:consumer:1.0.0`). The
-  artifactId + version produce the jar name `consumer-1.0.0.jar` referenced in the Dockerfile.
-- `<java.version>21</java.version>` — compiles and runs on Java 21 (LTS).
-- `<dependencies>`: `spring-boot-starter` (core Spring Boot) + `spring-kafka` (the `@KafkaListener`
-  support). That's all Lab 1 needs. **v2 adds** actuator, web, JPA, etc.
-- `spring-boot-maven-plugin` — packages everything into a single runnable "fat jar" (`java -jar`).
+- `plugins { }`:
+  - `java` — compiles Java.
+  - `org.springframework.boot 3.3.4` — the Spring Boot plugin; adds the `bootJar` task that builds the
+    single runnable "fat jar".
+  - `io.spring.dependency-management 1.1.6` — applies Spring Boot's **curated dependency versions**, so
+    you don't pin a version on `spring-kafka`/starters (Spring picks compatible ones). This is Gradle's
+    equivalent of Maven's `spring-boot-starter-parent`.
+- `group` / `version` — the project identity. `version = '1.0.0'` makes `bootJar` output
+  `build/libs/consumer-1.0.0.jar` (referenced in the Dockerfile).
+- `sourceCompatibility = '21'` — targets Java 21.
+- `repositories { mavenCentral() }` — where dependencies are downloaded from.
+- `dependencies { }` — note these are richer than a bare consumer because we're adding the **boot UI**:
+  - `spring-boot-starter-web` — an embedded web server; needed so Spring Boot Admin can read the
+    consumer's Actuator endpoints over HTTP. (This means the consumer now also listens on an HTTP port
+    — default 8080 inside its container.)
+  - `spring-kafka` — the `@KafkaListener`.
+  - `spring-boot-starter-actuator` — exposes `/actuator/*` (health, metrics, loggers, env…).
+  - `spring-boot-admin-starter-client` — auto-registers this app with the Spring Boot Admin server.
+- **Why no wrapper (`gradlew`)?** The multi-stage Dockerfile builds with the official `gradle` image,
+  so you don't need Gradle installed locally. (In a real project you'd commit a wrapper; kept minimal
+  here.)
 
 ▶️ **Do.** Create `consumer/src/main/resources/application.yml`:
 ```yaml
 spring:
+  application:
+    name: kafka-consumer          # the name shown in the Spring Boot Admin UI
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:29092}
     consumer:
@@ -750,6 +768,23 @@ spring:
     listener:
       # threads per pod = extra consumers in the group. Start at 1 so pod count == consumer count.
       concurrency: ${KAFKA_CONCURRENCY:1}
+  boot:
+    admin:
+      client:
+        # where the Spring Boot Admin server lives; each consumer registers itself here
+        url: ${SPRING_BOOT_ADMIN_URL:http://localhost:8081}
+        instance:
+          prefer-ip: true         # register by IP so Admin can reach each instance/pod
+
+# expose Actuator endpoints so the Boot Admin UI can read them
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"              # all endpoints (health, metrics, loggers, env, threaddump…) — fine for a lab
+  endpoint:
+    health:
+      show-details: always
 
 app:
   topic: ${KAFKA_TOPIC:events}
@@ -758,10 +793,16 @@ app:
 ```
 🧠 **Why — the settings that matter:**
 - `${VAR:default}` — every value can be overridden by an env var in Docker/k8s.
+- `spring.application.name` — the label each instance shows under in the Boot Admin UI.
 - `auto-offset-reset: earliest` — a *new* group reads from the start of the topic (see all messages).
 - `concurrency` — listener threads per pod; **each thread is a separate consumer in the group.**
   Start at 1 so *pods = consumers*; you'll change it deliberately in Experiment D.
 - `process-delay-ms` — a fake `Thread.sleep` so **lag** is visible before it drains.
+- `spring.boot.admin.client.url` — the address of the **boot UI** server; the consumer POSTs a
+  registration here on startup. `prefer-ip: true` makes it register a reachable IP (important when
+  scaled to many containers/pods).
+- `management.endpoints.web.exposure.include: "*"` — opens all Actuator endpoints so the UI can show
+  health, metrics, log levels, and environment. (In production you'd expose a curated subset.)
 
 📄 **What this file is:** the application entry point — the `main()` that boots the whole Spring
 Boot service. Every Spring Boot app has exactly one of these.
@@ -821,27 +862,120 @@ public class EventListener {
 > 🔍 **The `[pod=...] partition=...` log line is your microscope.** When you scale pods or add
 > partitions, tail these logs and watch which pod owns which partition — that's rebalancing, live.
 
-▶️ **Do.** Create `consumer/Dockerfile` (multi-stage):
+▶️ **Do.** Create `consumer/Dockerfile` (multi-stage, Gradle):
 ```dockerfile
 # ---- build stage ----
-FROM maven:3.9-eclipse-temurin-21 AS build
+FROM gradle:8.10-jdk21 AS build
 WORKDIR /app
-COPY pom.xml .
-RUN mvn -q dependency:go-offline
+COPY settings.gradle build.gradle ./
+RUN gradle dependencies --no-daemon > /dev/null 2>&1 || true   # cache deps in their own layer
 COPY src ./src
-RUN mvn -q clean package -DskipTests
+RUN gradle bootJar --no-daemon
 
 # ---- run stage ----
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-COPY --from=build /app/target/consumer-1.0.0.jar app.jar
+COPY --from=build /app/build/libs/consumer-1.0.0.jar app.jar
 ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
-🧠 **Why.** Build stage has Maven+JDK (big); run stage has only a JRE + jar (small).
-`dependency:go-offline` is a cached layer so Maven doesn't re-download on every code change.
-You'll reuse this pattern for every Spring service in Lab 2.
+🧠 **Why.** Build stage has Gradle + JDK (big); run stage has only a JRE + jar (small). Copying the
+build scripts and resolving `dependencies` **before** `src` means Docker caches the (slow) dependency
+layer and only re-runs it when `build.gradle` changes. `--no-daemon` is standard in CI/containers (no
+long-lived Gradle process). `bootJar` produces `build/libs/consumer-1.0.0.jar`. You'll reuse this
+pattern for every Spring service in Lab 2.
 
 ✅ **CHECKPOINT 3.1 — Phase 3 files created.** All consumer files exist. (It builds in Phase 4.)
+
+### Exercise 3.2 — Create the Spring Boot Admin server (the "boot UI")
+
+📄 **What this is:** a *second*, tiny Spring Boot app whose only job is to run the **Spring Boot
+Admin** dashboard. Your consumer instances register themselves with it, and it shows their health,
+metrics, log levels, threads, and environment in the browser — the Spring counterpart to Kafka UI.
+It lives in its own `admin-server/` folder because it's a separate deployable service.
+
+▶️ **Do.** Create `admin-server/settings.gradle`:
+```groovy
+rootProject.name = 'admin-server'
+```
+
+▶️ **Do.** Create `admin-server/build.gradle`:
+```groovy
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.3.4'
+    id 'io.spring.dependency-management' version '1.1.6'
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = '21'
+}
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    springBootAdminVersion = '3.3.6'
+}
+
+dependencies {
+    implementation "de.codecentric:spring-boot-admin-starter-server:${springBootAdminVersion}"
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+}
+```
+🧠 **Note the one difference from the consumer:** this uses `spring-boot-admin-starter-**server**`
+(hosts the dashboard) rather than the `-client` (registers with it).
+
+▶️ **Do.** Create `admin-server/src/main/java/com/example/admin/AdminServerApplication.java`:
+```java
+package com.example.admin;
+
+import de.codecentric.boot.admin.server.config.EnableAdminServer;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@EnableAdminServer          // turns this plain Spring Boot app into the Admin dashboard
+@SpringBootApplication
+public class AdminServerApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(AdminServerApplication.class, args);
+    }
+}
+```
+🧠 **The whole trick is `@EnableAdminServer`** — that single annotation wires up the entire Boot Admin
+web UI. Everything else is a standard Spring Boot app.
+
+▶️ **Do.** Create `admin-server/src/main/resources/application.yml`:
+```yaml
+server:
+  port: 8081            # the boot UI is served here
+spring:
+  application:
+    name: spring-boot-admin
+```
+
+▶️ **Do.** Create `admin-server/Dockerfile` (same Gradle multi-stage as the consumer):
+```dockerfile
+# ---- build stage ----
+FROM gradle:8.10-jdk21 AS build
+WORKDIR /app
+COPY settings.gradle build.gradle ./
+RUN gradle dependencies --no-daemon > /dev/null 2>&1 || true
+COPY src ./src
+RUN gradle bootJar --no-daemon
+
+# ---- run stage ----
+FROM eclipse-temurin:21-jre
+WORKDIR /app
+COPY --from=build /app/build/libs/admin-server-1.0.0.jar app.jar
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```
+
+✅ **CHECKPOINT 3.2 — boot UI server created.** You now have two Spring Boot apps: the `consumer`
+(registers as a client) and `admin-server` (hosts the dashboard). They connect in Phase 4.
 
 ---
 
@@ -870,22 +1004,41 @@ You'll reuse this pattern for every Spring service in Lab 2.
       KAFKA_TOPIC: events
       KAFKA_CONCURRENCY: "1"
       PROCESS_DELAY_MS: "200"
+      SPRING_BOOT_ADMIN_URL: http://spring-boot-admin:8081   # register with the boot UI
     depends_on:
       - kafka
+      - spring-boot-admin
     # NOTE: no container_name here, so we can scale it to multiple instances
+
+  spring-boot-admin:
+    build: ./admin-server
+    container_name: spring-boot-admin
+    ports:
+      - "8081:8081"        # the boot UI, in your browser at http://localhost:8081
+    depends_on:
+      - kafka
 ```
 🧠 **Why.** The producer now uses `kafka:9092` (it's a container). The consumer has **no
 `container_name`** — Compose can only scale services without a fixed name, and scaling is exactly
-what Experiment B needs.
+what Experiment B needs. `SPRING_BOOT_ADMIN_URL` points each consumer at the **boot UI** service
+(reachable by its container name `spring-boot-admin` on the compose network). The `spring-boot-admin`
+service publishes port **8081** to your host so you can open the dashboard.
 
 ▶️ **Do.**
 ```powershell
 docker compose up -d --build
 docker compose ps
 ```
-👀 **Expect.** `kafka`, `kafka-ui`, `producer`, and one `consumer` all running.
+👀 **Expect.** `kafka`, `kafka-ui`, `producer`, `spring-boot-admin`, and one `consumer` all running.
 
-✅ **CHECKPOINT 4.1.** All four services up; the consumer built without errors.
+▶️ **Do.** Open the **boot UI** at **http://localhost:8081**.
+👀 **Expect.** Spring Boot Admin shows one **kafka-consumer** instance, status **UP** (green). Click it
+→ see live health, JVM/metrics, log levels, threads, and environment.
+
+📝 **Record.** Consumer instances shown in Boot Admin: ______   Status: ______
+
+✅ **CHECKPOINT 4.1.** All five services up; the consumer built without errors and appears **UP** in
+the boot UI at http://localhost:8081.
 
 ### Exercise 4.2 — EXPERIMENT A: partition distribution
 
@@ -933,7 +1086,13 @@ docker compose logs consumer | Select-String "partitions assigned"
 
 🔍 In Kafka UI → **Consumers → event-consumers**: note members, assignment, and **lag** per partition.
 
-✅ **CHECKPOINT B.** With 5 consumers and 3 partitions, exactly 2 are idle.
+🔍 In the **boot UI** (http://localhost:8081): the **kafka-consumer** application now shows **5
+instances**, each **UP**. This is the boot UI's version of the same story — Kafka UI shows the
+partition assignment; Boot Admin shows the running instances. Scale down (`--scale consumer=2`) and
+watch instances drop off the dashboard.
+
+✅ **CHECKPOINT B.** With 5 consumers and 3 partitions, exactly 2 are idle — and the boot UI lists 5
+consumer instances.
 
 ### Exercise 4.4 — EXPERIMENT C: add partitions live
 
@@ -995,9 +1154,11 @@ nodes:
         hostPort: 8080
       - containerPort: 30800   # producer NodePort
         hostPort: 8000
+      - containerPort: 30081   # spring-boot-admin (boot UI) NodePort
+        hostPort: 8081
 ```
 🧠 **Why.** `extraPortMappings` punches host ports through the kind container to the NodePort
-Services inside, so your browser at `localhost:8080`/`:8000` reaches pods in the cluster.
+Services inside, so your browser at `localhost:8080`/`:8000`/`:8081` reaches pods in the cluster.
 
 ### Exercise 5.2 — Create cluster & load images
 
@@ -1012,13 +1173,15 @@ kubectl cluster-info --context kind-kafka-lab
 
 docker build -t producer:local ./producer
 docker build -t consumer:local ./consumer
+docker build -t admin-server:local ./admin-server
 
 kind load docker-image producer:local --name kafka-lab
 kind load docker-image consumer:local --name kafka-lab
+kind load docker-image admin-server:local --name kafka-lab
 ```
-👀 **Expect.** `cluster-info` prints the control plane URL; both images report "loaded".
+👀 **Expect.** `cluster-info` prints the control plane URL; all three images report "loaded".
 
-✅ **CHECKPOINT 5.2.** Cluster exists; both images loaded into it.
+✅ **CHECKPOINT 5.2.** Cluster exists; all three images loaded into it.
 
 ### Exercise 5.3 — Create the manifests
 
@@ -1147,6 +1310,42 @@ spec:
 🧠 **Why.** `imagePullPolicy: IfNotPresent` is essential with `kind load` — the default `Always`
 would try (and fail) to pull `producer:local` from a nonexistent registry.
 
+▶️ **Do.** Create `k8s/admin-server.yaml` (the boot UI):
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spring-boot-admin
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: spring-boot-admin }
+  template:
+    metadata:
+      labels: { app: spring-boot-admin }
+    spec:
+      containers:
+        - name: spring-boot-admin
+          image: admin-server:local
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8081 }]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spring-boot-admin
+spec:
+  type: NodePort
+  selector: { app: spring-boot-admin }
+  ports:
+    - port: 8081
+      targetPort: 8081
+      nodePort: 30081        # forwarded to localhost:8081 by kind-cluster.yaml
+```
+🧠 **Why.** Same shape as Kafka UI: a Deployment runs the boot UI, and a NodePort Service exposes it
+on `30081` → your browser at `localhost:8081`. The consumer reaches it in-cluster via the Service DNS
+name `spring-boot-admin:8081` (set below).
+
 ▶️ **Do.** Create `k8s/consumer.yaml`:
 ```yaml
 apiVersion: apps/v1
@@ -1171,9 +1370,13 @@ spec:
             - { name: KAFKA_TOPIC, value: "events" }
             - { name: KAFKA_CONCURRENCY, value: "1" }
             - { name: PROCESS_DELAY_MS, value: "200" }
+            - { name: SPRING_BOOT_ADMIN_URL, value: "http://spring-boot-admin:8081" }
 ```
 🧠 **Why.** The consumer has **no Service** — nothing connects *to* it; it pulls from Kafka.
-`replicas` is the k8s equivalent of `--scale consumer=N`.
+`replicas` is the k8s equivalent of `--scale consumer=N`. `SPRING_BOOT_ADMIN_URL` points each
+consumer pod at the boot UI Service; with `prefer-ip` set in `application.yml`, each pod registers its
+own pod IP so Boot Admin can scrape it — meaning **each replica appears as its own instance** in the
+dashboard when you scale.
 
 ### Exercise 5.4 — Deploy & create the topic
 
@@ -1181,7 +1384,7 @@ spec:
 ```powershell
 kubectl apply -f k8s/kafka.yaml
 kubectl wait --for=condition=available deploy/kafka --timeout=120s
-kubectl apply -f k8s/kafka-ui.yaml -f k8s/producer.yaml -f k8s/consumer.yaml
+kubectl apply -f k8s/kafka-ui.yaml -f k8s/producer.yaml -f k8s/admin-server.yaml -f k8s/consumer.yaml
 kubectl get pods -w        # wait until all Running; Ctrl+C to stop
 ```
 ▶️ **Do.** Create the topic inside the cluster:
