@@ -186,12 +186,21 @@ get the same treatment when we reach them.
   POST requests that trigger the producer to publish events. *Why:* already installed; just remember
   to call `curl.exe` in PowerShell (see Exercise 1.0.h).
 
-> **How they fit together (Lab 1):** you run `curl.exe` → hits the **FastAPI** producer (Python) →
-> which uses **confluent-kafka** to publish to **Apache Kafka** → the **Spring Boot** consumer
-> (`@KafkaListener` via **spring-kafka**) reads and prints which partition/pod handled it. You watch
-> the **broker** side in **Kafka UI** (topics, partitions, lag) and the **consumer** side in the
-> **boot UI** / Spring Boot Admin (health, metrics, instances). Phases 1–4 run everything as
-> **Docker** containers; Phase 5 runs them as **Kubernetes** pods on a **kind** cluster.
+**How they fit together (Lab 1):** you run `curl.exe` → hits the **FastAPI** producer (Python) →
+which uses **confluent-kafka** to publish to **Apache Kafka** → the **Spring Boot** consumer
+(`@KafkaListener` via **spring-kafka**) reads and prints which partition/pod handled it. You watch
+the **broker** side in **Kafka UI** (topics, partitions, lag) and the **consumer** side in the
+**boot UI** / Spring Boot Admin (health, metrics, instances). Phases 1–4 run everything as
+**Docker** containers; Phase 5 runs them as **Kubernetes** pods on a **kind** cluster.
+
+```mermaid
+flowchart LR
+    U["You · curl.exe"] -->|"HTTP POST /publish"| P["producer<br/>FastAPI · :8000"]
+    P -->|"produce · key → partition"| K[("Apache Kafka<br/>topic: events · 3 partitions")]
+    K -->|"consume · group: event-consumers"| C["consumer<br/>Spring Boot @KafkaListener"]
+    K -. "broker view" .-> KUI["Kafka UI · :8080"]
+    C -. "health / metrics" .-> SBA["Spring Boot Admin · :8081"]
+```
 
 ---
 ---
@@ -229,7 +238,36 @@ By the end of this lab you will be able to:
 | 3 | 5 | **2 consumers sit idle** (partitions cap it) |
 | 6 | 5 | all busy; one consumer handles 2 partitions |
 
-You will *prove each of these rows yourself* in the experiments.
+You will *prove each of these rows yourself* in the experiments. Visually — the 3-partition,
+5-consumer case (the surprising one):
+
+```mermaid
+flowchart LR
+    subgraph T["Topic: events — 3 partitions"]
+        direction TB
+        P0["partition 0"]
+        P1["partition 1"]
+        P2["partition 2"]
+    end
+    subgraph G["Consumer group: event-consumers — 5 consumers"]
+        direction TB
+        C1["consumer 1"]
+        C2["consumer 2"]
+        C3["consumer 3"]
+        C4["consumer 4 · IDLE"]
+        C5["consumer 5 · IDLE"]
+    end
+    P0 --> C1
+    P1 --> C2
+    P2 --> C3
+
+    classDef idle fill:#6e40c9,stroke:#8957e5,color:#fff;
+    class C4,C5 idle;
+```
+
+Each partition feeds exactly one consumer; the extra two consumers get nothing because
+`min(3 partitions, 5 consumers) = 3`. Add a 4th and 5th partition and the idle ones light up — that's
+Experiment C.
 
 ---
 
