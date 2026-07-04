@@ -28,6 +28,10 @@ building real systems and *observing* how they behave. Managed as a **monorepo**
 | 🧹 **Cleanup** | How to tear it down |
 
 **Tips before you start**
+- **Run commands ONE AT A TIME.** Where a step shows several commands, enter them individually
+  (type or paste a single line, press Enter, wait, then the next). Pasting a multi-line block into
+  PowerShell often splits a line or drops into a `>>` continuation prompt and silently runs the
+  wrong thing. If you ever see `>>`, press **Ctrl+C** to reset.
 - Keep **two terminals** open: one to run commands, one to tail logs.
 - Keep **Kafka UI** (http://localhost:8080) open in a browser once it's up.
 - When a step says *Record*, actually write it in the table. The tables are the point.
@@ -660,18 +664,51 @@ layer and only re-runs it when dependencies change.
 
 ### Exercise 2.2 — Local smoke test (optional but recommended)
 
-▶️ **Do.**
+> ⚠️ **Run each command on its own line — type or paste them ONE AT A TIME, not as a block.**
+> PowerShell mangles multi-line pastes: it splits lines (`-r` loses its argument) or drops into a
+> `>>` continuation prompt and silently runs nothing. One command → Enter → wait → next.
+
+> 🧠 **Why `py -3.11` and not `python`?** Two Windows gotchas, both of which you avoid this way:
+> (1) `python` may resolve to the Microsoft Store alias, which fails to build a venv; (2) a venv on
+> the newest Python (3.13) has **no prebuilt `confluent-kafka` wheel**, so pip tries to compile C
+> source and fails with *"Microsoft Visual C++ required."* The `py -3.11` launcher sidesteps both —
+> 3.11 has a ready wheel. *(Prefer not to deal with any of this? Skip straight to Phase 4 — Docker
+> runs Python in a container and none of this applies.)*
+
+▶️ **Do — go to the producer folder:**
 ```powershell
 cd producer
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app:app --reload    # uses localhost:29092 — Kafka must be up from Phase 1
 ```
-▶️ **Do.** In a second terminal:
+
+▶️ **Do — create the virtual environment (Python 3.11):**
+```powershell
+py -3.11 -m venv .venv
+```
+
+▶️ **Do — activate it** (your prompt should now start with `(.venv)`):
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+▶️ **Do — install dependencies** (wait for `Successfully installed …confluent-kafka…`):
+```powershell
+pip install -r requirements.txt
+```
+
+▶️ **Do — run the API** (Kafka must be up from Phase 1; uses `localhost:29092`):
+```powershell
+uvicorn app:app --reload
+```
+
+▶️ **Do — in a SECOND terminal, publish an event:**
 ```powershell
 curl.exe -X POST http://localhost:8000/publish -H "Content-Type: application/json" -d '{\"key\":\"user-1\",\"message\":\"hello\"}'
 ```
+
+🛠️ **If something fails:**
+- *`Unable to create directory …Activate.ps1`* → a stale/broken `.venv`. Run `Remove-Item .venv -Recurse -Force`, then redo the `py -3.11 -m venv .venv` step.
+- *`Microsoft Visual C++ 14.0 or greater is required`* → your venv is on Python 3.13. Delete it and rebuild with `py -3.11` (as above).
+- *`>>` prompt appears* → PowerShell is waiting for an unfinished line; press **Ctrl+C** and re-type the single command.
 ▶️ **Do.** Repeat the same command 3 times, then change the key to `user-7` and run 3 more.
 
 👀 **Expect.** uvicorn logs `delivered key=user-1 -> partition X`. Same key → **same partition
