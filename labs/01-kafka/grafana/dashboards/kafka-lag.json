@@ -11,7 +11,7 @@
   "timezone": "browser",
   "title": "Kafka · Consumer Lag & Throughput",
   "uid": "kafka-lag",
-  "version": 3,
+  "version": 4,
   "panels": [
     {
       "type": "stat",
@@ -39,7 +39,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "cps", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "#3D71D9" } } },
       "options": { "colorMode": "value", "graphMode": "area", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(kafka_topic_partition_current_offset{topic=\"events\"}[1m]))", "refId": "A" } ]
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "clamp_min(sum(deriv(kafka_topic_partition_current_offset{topic=\"events\"}[2m])), 0)", "refId": "A" } ]
     },
     {
       "type": "stat",
@@ -49,7 +49,7 @@
       "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
       "fieldConfig": { "defaults": { "unit": "cps", "decimals": 0, "color": { "mode": "fixed", "fixedColor": "#56A64B" } } },
       "options": { "colorMode": "value", "graphMode": "area", "textMode": "value_and_name", "reduceOptions": { "calcs": ["lastNotNull"] } },
-      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(kafka_consumergroup_current_offset{consumergroup=\"event-consumers\",topic=\"events\"}[1m]))", "refId": "A" } ]
+      "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "clamp_min(sum(deriv(kafka_consumergroup_current_offset{consumergroup=\"event-consumers\",topic=\"events\"}[2m])), 0)", "refId": "A" } ]
     },
     {
       "type": "stat",
@@ -80,8 +80,8 @@
       },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "calcs": ["last"] }, "tooltip": { "mode": "multi", "sort": "desc" } },
       "targets": [
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(kafka_topic_partition_current_offset{topic=\"events\"}[1m]))", "legendFormat": "Produced", "refId": "A" },
-        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "sum(rate(kafka_consumergroup_current_offset{consumergroup=\"event-consumers\",topic=\"events\"}[1m]))", "legendFormat": "Consumed", "refId": "B" }
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "clamp_min(sum(deriv(kafka_topic_partition_current_offset{topic=\"events\"}[2m])), 0)", "legendFormat": "Produced", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "clamp_min(sum(deriv(kafka_consumergroup_current_offset{consumergroup=\"event-consumers\",topic=\"events\"}[2m])), 0)", "legendFormat": "Consumed", "refId": "B" }
       ]
     },
     {
