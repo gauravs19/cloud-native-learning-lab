@@ -1,0 +1,19 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Java / Maven
+target/
+*.class
+
+# Kubernetes / local
+kubeconfig
+*.log
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
