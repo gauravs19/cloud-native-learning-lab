@@ -1,0 +1,5 @@
+server:
+  port: 8081            # the boot UI is served here
+spring:
+  application:
+    name: spring-boot-admin

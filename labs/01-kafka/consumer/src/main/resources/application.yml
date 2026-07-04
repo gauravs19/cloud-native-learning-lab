@@ -1,0 +1,35 @@
+spring:
+  application:
+    name: kafka-consumer          # the name shown in the Spring Boot Admin UI
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:29092}
+    consumer:
+      group-id: ${KAFKA_GROUP:event-consumers}
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      # threads per pod = extra consumers in the group. Start at 1 so pod count == consumer count.
+      concurrency: ${KAFKA_CONCURRENCY:1}
+  boot:
+    admin:
+      client:
+        # where the Spring Boot Admin server lives; each consumer registers itself here
+        url: ${SPRING_BOOT_ADMIN_URL:http://localhost:8081}
+        instance:
+          prefer-ip: true         # register by IP so Admin can reach each instance/pod
+
+# expose Actuator endpoints so the Boot Admin UI can read them
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"              # all endpoints (health, metrics, loggers, env, threaddump…) — fine for a lab
+  endpoint:
+    health:
+      show-details: always
+
+app:
+  topic: ${KAFKA_TOPIC:events}
+  # a fake work delay (ms) so you can watch lag build up and clear
+  process-delay-ms: ${PROCESS_DELAY_MS:200}

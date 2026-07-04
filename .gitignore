@@ -4,9 +4,11 @@ venv/
 __pycache__/
 *.pyc
 
-# Java / Maven
+# Java / Maven / Gradle
 target/
 *.class
+.gradle/
+build/
 
 # Kubernetes / local
 kubeconfig

@@ -1,0 +1,27 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.3.4'
+    id 'io.spring.dependency-management' version '1.1.6'
+}
+
+group = 'com.example'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = '21'   // compile & run on Java 21 (LTS)
+}
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    springBootAdminVersion = '3.3.6'   // matches Spring Boot 3.3.x
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'          // serves Actuator over HTTP
+    implementation 'org.springframework.kafka:spring-kafka'                     // @KafkaListener support
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'     // operational endpoints
+    implementation "de.codecentric:spring-boot-admin-starter-client:${springBootAdminVersion}"  // registers with the Boot Admin UI
+}
