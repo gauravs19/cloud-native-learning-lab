@@ -75,6 +75,102 @@ cloud-native-learning-lab/
 ---
 ---
 
+# The tool stack — what each tool is & why we use it
+
+Before touching commands, here's the mental model of every tool in Lab 1: **what it is**, **its
+job in this system**, and **why we picked it** (all free/OSS). Later labs add more tools; they'll
+get the same treatment when we reach them.
+
+### Containers & runtime
+
+- **Docker (engine).** *What:* software that packages an app + its dependencies into an isolated,
+  portable **container** that runs the same everywhere. *Job here:* runs Kafka, Kafka UI, the
+  producer, and the consumer as separate containers without installing any of them on Windows
+  directly. *Why:* the whole lab is about running distributed pieces that talk over a network —
+  containers make that reproducible on one laptop.
+- **Rancher Desktop.** *What:* a free/open-source desktop app that provides the Docker engine
+  (and a local Kubernetes) on Windows/Mac. *Job here:* gives you the `docker` command. *Why:* OSS,
+  no licensing terms (unlike Docker Desktop for larger orgs). We run it with the **dockerd (moby)**
+  engine so the `docker` CLI works exactly as written.
+- **WSL2 (Windows Subsystem for Linux).** *What:* a real Linux kernel running inside Windows.
+  *Job here:* Docker containers are Linux containers; WSL2 is the Linux environment they actually
+  run in. *Why:* it's how Docker/Kafka run natively-fast on Windows. (This is why keeping WSL
+  updated mattered during setup.)
+
+### The messaging backbone
+
+- **Apache Kafka.** *What:* a distributed **event streaming platform** — a durable, ordered,
+  replayable log that producers write to and consumers read from. *Job here:* the central broker
+  all events flow through; the star of Lab 1. *Why:* the industry-standard OSS event bus, and the
+  perfect vehicle for learning partitioning and consumer-group scaling.
+- **KRaft mode.** *What:* Kafka's built-in consensus/metadata system (Kafka Raft). *Job here:* lets
+  a single Kafka node manage its own metadata. *Why:* older Kafka needed a **separate ZooKeeper**
+  service; KRaft removes that, so our setup is one container instead of two — simpler to learn.
+- **Kafka UI (provectuslabs/kafka-ui).** *What:* a free web dashboard for Kafka. *Job here:* your
+  window into topics, partitions, messages, consumer groups, and **lag** — so concepts are visible,
+  not abstract. *Why:* OSS, zero-config, and turns invisible broker state into something you watch.
+
+### The producer side (Python)
+
+- **Python.** *What:* general-purpose language. *Job here:* implements the producer service. *Why:*
+  fastest way to write a tiny REST API; contrasts nicely with the Java consumer (Kafka is
+  polyglot).
+- **FastAPI.** *What:* a modern Python web framework for building REST APIs. *Job here:* exposes
+  `/publish` and `/publish-bulk` HTTP endpoints you call to send events. *Why:* minimal boilerplate,
+  auto-validation, OSS.
+- **uvicorn.** *What:* the ASGI web server that actually runs a FastAPI app. *Job here:* serves the
+  producer on port 8000. *Why:* the standard way to run FastAPI.
+- **confluent-kafka.** *What:* a Python Kafka client library. *Job here:* the code that connects to
+  the broker and publishes messages (computes the partition from the key). *Why:* fast, widely used,
+  OSS.
+- **pydantic.** *What:* data-validation library (bundled with FastAPI). *Job here:* defines the
+  `Event` request shape (`key`, `message`) and rejects malformed input. *Why:* free request
+  validation.
+
+### The consumer side (Java / Spring)
+
+- **Java 21 (OpenJDK LTS).** *What:* the language/runtime for the consumer. *Job here:* runs the
+  Spring Boot consumer service. *Why:* current LTS; see the Java-version rationale in Exercise 1.0.e.
+- **Spring Boot.** *What:* the dominant Java framework for building production services with minimal
+  configuration. *Job here:* the consumer application skeleton (`@SpringBootApplication`, config,
+  lifecycle). *Why:* what most real Kafka consumers are built on; sets you up for Lab 2's
+  microservices.
+- **Spring for Apache Kafka (spring-kafka).** *What:* Spring's Kafka integration. *Job here:*
+  provides `@KafkaListener`, which handles polling, offset commits, and **rebalancing** for you —
+  so you observe rebalancing rather than hand-code it. *Why:* the standard, OSS way to consume Kafka
+  in Spring.
+- **Maven.** *What:* Java build/dependency tool. *Job here:* downloads dependencies and builds the
+  runnable jar (driven by `pom.xml`). *Why:* the most common Java build tool; the multi-stage
+  Dockerfile runs it for you.
+
+### Kubernetes (Phase 5)
+
+- **Kubernetes (k8s).** *What:* a container **orchestrator** — it schedules containers (as *pods*),
+  restarts them, networks them, and scales them across machines. *Job here:* runs the same Kafka
+  system as Phase 1–4, but the "real" way, so you scale consumers with `kubectl scale` and watch
+  rebalancing at the orchestration layer. *Why:* the industry standard for running containers in
+  production; the destination this whole lab builds toward.
+- **kubectl.** *What:* the command-line client for talking to any Kubernetes cluster. *Job here:*
+  applies manifests, scales deployments, tails pod logs. *Why:* the universal k8s CLI.
+- **kind (Kubernetes-in-Docker).** *What:* runs a real Kubernetes cluster **inside Docker
+  containers** on your laptop. *Job here:* your local, disposable, free k8s cluster for Phase 5.
+  *Why:* fully OSS, nothing to license, and tears down cleanly — ideal for learning.
+
+### Utility
+
+- **curl.exe.** *What:* a command-line HTTP client (built into Windows 10/11). *Job here:* sends the
+  POST requests that trigger the producer to publish events. *Why:* already installed; just remember
+  to call `curl.exe` in PowerShell (see Exercise 1.0.h).
+
+> **How they fit together (Lab 1):** you run `curl.exe` → hits the **FastAPI** producer (Python) →
+> which uses **confluent-kafka** to publish to **Apache Kafka** → the **Spring Boot** consumer
+> (`@KafkaListener` via **spring-kafka**) reads and prints which partition/pod handled it → you
+> watch it all in **Kafka UI**. Phases 1–4 run these as **Docker** containers; Phase 5 runs them as
+> **Kubernetes** pods on a **kind** cluster.
+
+---
+---
+
 # LAB 1 — Kafka core
 
 | | |
@@ -453,12 +549,22 @@ Refresh Kafka UI → topic `events` with 3 partitions.
 
 ### Exercise 2.1 — Create the producer files
 
+📄 **What this file is:** the producer's Python dependency list. `pip install -r requirements.txt`
+reads it to install exactly these packages. Versions are **pinned** (`==`) so the build is
+reproducible — you get the same versions today and next month.
+
 ▶️ **Do.** Create `producer/requirements.txt`:
 ```
 fastapi==0.115.0
 uvicorn[standard]==0.30.6
 confluent-kafka==2.5.3
 ```
+🧠 **Line by line:**
+- `fastapi==0.115.0` — the web framework that defines the `/publish` endpoints.
+- `uvicorn[standard]==0.30.6` — the server that runs FastAPI. `[standard]` pulls in extras
+  (fast HTTP parsing, websockets, auto-reload) — the commonly-recommended bundle.
+- `confluent-kafka==2.5.3` — the Kafka client that actually talks to the broker. (Note: `pydantic`
+  isn't listed because FastAPI installs it automatically as a dependency.)
 
 ▶️ **Do.** Create `producer/app.py`:
 ```python
@@ -565,6 +671,10 @@ every time**; different key → possibly a different partition.
 
 ### Exercise 3.1 — Create the consumer project
 
+📄 **What this file is:** Maven's project descriptor. It declares the project's identity, its Java
+version, its dependencies, and how to build it. Maven reads `pom.xml` to download libraries and
+produce the runnable jar.
+
 ▶️ **Do.** Create `consumer/pom.xml`:
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -608,9 +718,16 @@ every time**; different key → possibly a different partition.
     </build>
 </project>
 ```
-🧠 **Why.** The `starter-parent` manages dependency versions (you don't pin `spring-kafka`). The
-maven plugin builds the runnable fat jar used by the Dockerfile. Deps are minimal now — **v2 adds
-actuator, web, JPA, etc.**
+🧠 **Section by section:**
+- `<parent> spring-boot-starter-parent 3.3.4` — inherits Spring Boot's curated dependency versions,
+  so you *don't* specify a version for `spring-kafka` (the parent picks a compatible one). This is
+  why the deps below have no `<version>`.
+- `<groupId>/<artifactId>/<version>` — this project's identity (`com.example:consumer:1.0.0`). The
+  artifactId + version produce the jar name `consumer-1.0.0.jar` referenced in the Dockerfile.
+- `<java.version>21</java.version>` — compiles and runs on Java 21 (LTS).
+- `<dependencies>`: `spring-boot-starter` (core Spring Boot) + `spring-kafka` (the `@KafkaListener`
+  support). That's all Lab 1 needs. **v2 adds** actuator, web, JPA, etc.
+- `spring-boot-maven-plugin` — packages everything into a single runnable "fat jar" (`java -jar`).
 
 ▶️ **Do.** Create `consumer/src/main/resources/application.yml`:
 ```yaml
@@ -638,6 +755,9 @@ app:
   Start at 1 so *pods = consumers*; you'll change it deliberately in Experiment D.
 - `process-delay-ms` — a fake `Thread.sleep` so **lag** is visible before it drains.
 
+📄 **What this file is:** the application entry point — the `main()` that boots the whole Spring
+Boot service. Every Spring Boot app has exactly one of these.
+
 ▶️ **Do.** Create `consumer/src/main/java/com/example/consumer/ConsumerApplication.java`:
 ```java
 package com.example.consumer;
@@ -652,6 +772,14 @@ public class ConsumerApplication {
     }
 }
 ```
+🧠 **What the code does:**
+- `@SpringBootApplication` — the one annotation that turns this into a Spring Boot app. It triggers
+  **component scanning** (so it finds your `EventListener`), **auto-configuration** (so `spring-kafka`
+  wires up a Kafka consumer from your `application.yml`), and marks this as the config root.
+- `SpringApplication.run(...)` — starts the Spring container, reads `application.yml`, connects to
+  Kafka, and begins listening. This call blocks and keeps the service alive.
+- `package com.example.consumer` — the base package; `@SpringBootApplication` scans this package and
+  everything under it, which is why `EventListener` (same package) is picked up automatically.
 
 ▶️ **Do.** Create `consumer/src/main/java/com/example/consumer/EventListener.java`:
 ```java
@@ -967,6 +1095,11 @@ spec:
       targetPort: 8080
       nodePort: 30080
 ```
+🧠 **What this manifest does:** it's two objects separated by `---`. The **Deployment** runs one
+Kafka UI pod, pointed at the broker via `KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092` (the
+in-cluster Service DNS name). The **Service** of `type: NodePort` exposes it on cluster port
+`30080`, which the `kind-cluster.yaml` port-mapping forwards to `localhost:8080` — that's how your
+browser reaches a pod running inside the cluster.
 
 ▶️ **Do.** Create `k8s/producer.yaml`:
 ```yaml
