@@ -50,6 +50,7 @@ building real systems and *observing* how they behave. Managed as a **monorepo**
 | v1.1 | `labs/01-kafka` | KEDA lag-based autoscaling | preview |
 | v1.2 | `labs/01-kafka` | Schema Registry + Avro, dead-letter topics | preview |
 | **v2.0** | `labs/02-spring-microservices` | Spring Boot microservices ecosystem | preview |
+| v2.1 | `labs/02-spring-microservices` | Contract-first REST (OpenAPI/Swagger) + gRPC service-to-service | preview |
 | **v3.0** | `labs/03-observability` | Metrics, logs, traces over the whole stack | preview |
 
 ## Monorepo layout
@@ -1509,6 +1510,32 @@ rate-limit), **PostgreSQL + Spring Data JPA + Flyway** (DB-per-service + migrati
 Planned experiments: sync vs async side by side; trip a circuit breaker by killing a service;
 retry+timeout under injected latency; central-config refresh with no restart; DB-per-service
 isolation; load-balance a scaled stateless service. Deploy path mirrors Lab 1 (Compose → kind).
+
+## LAB 2 add-on — v2.1: Contract-first REST (OpenAPI) & gRPC *(all OSS)*
+Deepen the **synchronous** communication styles from v2.0 by making the contract come *first* and
+adding a second, high-performance transport. Ties back to FOUNDATIONS §6 (sync: REST/gRPC/GraphQL).
+
+**Part A — OpenAPI / Swagger (contract-first REST).**
+- Describe the `order-service` / `inventory-service` REST APIs with an **OpenAPI 3** spec (the
+  contract) instead of letting the code define it ad hoc.
+- Serve interactive docs with **springdoc-openapi** → **Swagger UI** at `/swagger-ui.html`, and expose
+  the raw spec at `/v3/api-docs`.
+- **Code generation** with the **openapi-generator** (OSS): generate server stubs and/or typed client
+  code from the spec, so client and server can't drift.
+- *Experiment:* change the spec, regenerate, and watch the compiler catch a breaking change before
+  runtime — the value of contract-first.
+
+**Part B — gRPC (high-performance service-to-service).**
+- Define a service in a **Protobuf** `.proto` file (the strongly-typed contract).
+- Implement a **gRPC server** in one service and a **gRPC client** in another (e.g. `order-service`
+  calls `inventory-service` over gRPC instead of REST/OpenFeign), using the **grpc-spring-boot-starter**
+  (OSS) or the official `grpc-java` libraries.
+- *Experiment:* call the same inventory operation over **REST vs gRPC** and compare payload size and
+  latency; break the `.proto` contract and see the generated stubs fail to compile.
+
+**Concepts introduced:** contract-first (API-first) design, OpenAPI 3 spec + Swagger UI, client/server
+code generation, Protocol Buffers, gRPC (unary + streaming), HTTP/1.1+JSON vs HTTP/2+Protobuf
+trade-offs, and keeping contracts and code in sync. Deploy path mirrors Lab 1/2 (Compose → kind).
 
 ## LAB 3 — v3.0: Observability across the whole stack *(all OSS)*
 Make Labs 1–2 observable using the OSS **three pillars**:
