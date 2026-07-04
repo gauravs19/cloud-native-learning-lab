@@ -30,3 +30,36 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
     depends_on:
       - kafka
+
+  producer:
+    build: ./producer
+    container_name: producer
+    ports:
+      - "8000:8000"
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092    # internal listener — producer is a container now
+      KAFKA_TOPIC: events
+    depends_on:
+      - kafka
+
+  consumer:
+    build: ./consumer
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      KAFKA_GROUP: event-consumers
+      KAFKA_TOPIC: events
+      KAFKA_CONCURRENCY: "1"
+      PROCESS_DELAY_MS: "200"
+      SPRING_BOOT_ADMIN_URL: http://spring-boot-admin:8081   # register with the boot UI
+    depends_on:
+      - kafka
+      - spring-boot-admin
+    # NOTE: no container_name here, so we can scale it to multiple instances
+
+  spring-boot-admin:
+    build: ./admin-server
+    container_name: spring-boot-admin
+    ports:
+      - "8081:8081"        # the boot UI, in your browser at http://localhost:8081
+    depends_on:
+      - kafka
