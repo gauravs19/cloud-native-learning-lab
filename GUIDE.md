@@ -69,8 +69,16 @@ cloud-native-learning-lab/
 └── shared/                        ← cross-lab helpers (only if needed)
 ```
 
-> **All commands in Lab 1 assume this working directory:**
-> `cd D:\__claude\cloud-native-learning-lab\labs\01-kafka`
+> **Working directory (no hardcoded paths).** After you clone/create the repo, open PowerShell in
+> the Kafka lab folder. This manual never hardcodes an absolute path — instead, set `$LAB` **once**
+> to wherever *your* clone lives, and every Lab 1 command reuses it:
+> ```powershell
+> # adjust the left side to wherever you cloned the repo, then run this once per session:
+> $LAB = "$HOME\cloud-native-learning-lab\labs\01-kafka"   # example location
+> cd $LAB
+> ```
+> If you're already sitting in the lab folder, `$LAB = (Get-Location).Path` works too. Wherever you
+> see `cd $LAB` below, it just returns you to this folder.
 
 ---
 ---
@@ -497,7 +505,7 @@ services:
 
 ▶️ **Do.**
 ```powershell
-cd D:\__claude\cloud-native-learning-lab\labs\01-kafka
+cd $LAB    # the Kafka lab folder you set once at the top of Lab 1
 docker compose up -d kafka kafka-ui
 docker compose ps
 docker compose logs -f kafka   # Ctrl+C once you see "Kafka Server started"
@@ -998,7 +1006,7 @@ Services inside, so your browser at `localhost:8080`/`:8000` reaches pods in the
 
 ▶️ **Do.**
 ```powershell
-cd D:\__claude\cloud-native-learning-lab\labs\01-kafka
+cd $LAB    # the Kafka lab folder you set once at the top of Lab 1
 kind create cluster --name kafka-lab --config k8s/kind-cluster.yaml
 kubectl cluster-info --context kind-kafka-lab
 
