@@ -1,5 +1,7 @@
 import os
 import json
+import time
+import threading
 from fastapi import FastAPI
 from pydantic import BaseModel
 from confluent_kafka import Producer
@@ -40,6 +42,36 @@ def publish_bulk(count: int = 30):
         producer.produce(TOPIC, key=key, value=json.dumps({"n": i}), callback=_delivery)
     producer.flush()
     return {"status": "sent", "count": count}
+
+
+def _stream(rate: int, seconds: int, key_count: int):
+    """Background worker: produce `rate` events/sec for `seconds`, across key_count keys."""
+    n = 0
+    for _ in range(seconds):
+        start = time.monotonic()
+        for _ in range(rate):
+            key = f"user-{n % key_count}"
+            producer.produce(TOPIC, key=key, value=json.dumps({"n": n}))
+            n += 1
+        producer.poll(0)              # serve delivery callbacks without blocking
+        elapsed = time.monotonic() - start
+        if elapsed < 1.0:
+            time.sleep(1.0 - elapsed)  # pace to ~rate/sec
+    producer.flush()
+    print(f"stream done: produced {n} events")
+
+
+@app.post("/stream")
+def stream(rate: int = 20, seconds: int = 30, key_count: int = 10):
+    """Produce a steady STREAM: `rate` events/sec for `seconds` seconds (runs in the background).
+
+    Tune the load vs the consumer (which handles ~5 msg/sec per partition):
+      - rate below total consumer throughput  -> no lag
+      - rate above it                          -> lag builds (watch Kafka UI), drain by scaling consumers
+    """
+    total = rate * seconds
+    threading.Thread(target=_stream, args=(rate, seconds, key_count), daemon=True).start()
+    return {"status": "streaming", "rate": rate, "seconds": seconds, "keys": key_count, "total": total}
 
 
 @app.get("/health")

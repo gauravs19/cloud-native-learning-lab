@@ -633,6 +633,8 @@ confluent-kafka==2.5.3
 ```python
 import os
 import json
+import time
+import threading
 from fastapi import FastAPI
 from pydantic import BaseModel
 from confluent_kafka import Producer
@@ -675,6 +677,31 @@ def publish_bulk(count: int = 30):
     return {"status": "sent", "count": count}
 
 
+def _stream(rate: int, seconds: int, key_count: int):
+    """Background worker: produce `rate` events/sec for `seconds`, across key_count keys."""
+    n = 0
+    for _ in range(seconds):
+        start = time.monotonic()
+        for _ in range(rate):
+            key = f"user-{n % key_count}"
+            producer.produce(TOPIC, key=key, value=json.dumps({"n": n}))
+            n += 1
+        producer.poll(0)               # serve delivery callbacks without blocking
+        elapsed = time.monotonic() - start
+        if elapsed < 1.0:
+            time.sleep(1.0 - elapsed)  # pace to ~rate/sec
+    producer.flush()
+    print(f"stream done: produced {n} events")
+
+
+@app.post("/stream")
+def stream(rate: int = 20, seconds: int = 30, key_count: int = 10):
+    """Produce a steady STREAM: `rate` events/sec for `seconds` seconds (runs in background)."""
+    total = rate * seconds
+    threading.Thread(target=_stream, args=(rate, seconds, key_count), daemon=True).start()
+    return {"status": "streaming", "rate": rate, "seconds": seconds, "keys": key_count, "total": total}
+
+
 @app.get("/health")
 def health():
     return {"ok": True}
@@ -686,6 +713,11 @@ def health():
 - `_delivery` prints the *actual* partition and offset — your proof of the hash.
 - `BOOTSTRAP` defaults to `localhost:29092` (host listener) for laptop runs; overridden to
   `kafka:9092` in Docker/k8s.
+- **`/publish` vs `/publish-bulk` vs `/stream`:** one event, a one-shot burst, or a **sustained
+  stream** (`rate` events/sec for `seconds`). The stream runs in a **background thread** so the HTTP
+  call returns immediately; `producer.poll(0)` each tick services delivery callbacks, and the
+  per-second pacing keeps it near the requested rate. This is what you use to build **lag** on
+  purpose and watch it drain (Experiment A2).
 
 ▶️ **Do.** Create `producer/Dockerfile`:
 ```dockerfile
@@ -1135,6 +1167,47 @@ Kafka UI → Topics → `events` → Messages, each partition's offset has grown
 | events-2 |  |  |
 
 ✅ **CHECKPOINT A.** Keys are spread across 3 partitions; each key stays on one partition.
+
+### Exercise 4.2b — EXPERIMENT A2: stream events & watch lag build
+
+Instead of a one-shot burst, produce a **sustained stream** and watch the consumer fall behind. Your
+consumer has a 200 ms/message delay → it handles ~5 msg/sec per partition → **~15 msg/sec** total
+across 3 partitions. Stream faster than that and **lag builds**.
+
+▶️ **Do — start a stream** (250 events/sec for 60s — well above the ~15/sec the consumer can drain):
+```powershell
+curl.exe -X POST "http://localhost:8000/stream?rate=250&seconds=60"
+```
+👀 **Expect.** Immediate JSON reply `{"status":"streaming","rate":250,"seconds":60,"total":15000}`
+— the producer streams in the background.
+
+▶️ **Do — watch lag climb** in **Kafka UI → Consumers → `event-consumers`** (the *lag* column), and
+tail the consumer:
+```powershell
+docker compose logs -f consumer
+```
+👀 **Expect.** Lag rises steadily (produced ≫ consumed). The consumer keeps printing, but can't keep up.
+
+📝 **Record.**
+
+| Time | Total lag (Kafka UI) | Rising or falling? |
+|---|---|---|
+| stream +10s |  |  |
+| stream +30s |  |  |
+
+▶️ **Do — drain it by scaling consumers** (while the stream is still running or right after):
+```powershell
+docker compose up -d --scale consumer=3
+```
+👀 **Expect.** 3 consumers now cover the 3 partitions → ~3× throughput → **lag stops rising and
+falls back toward 0**. Watch the 3 instances appear in the **boot UI (:8081)** too.
+
+🧠 **The lesson.** Lag = (produce rate − consume rate) accumulated over time — Kafka's backpressure
+signal made visible. You drain it by adding consumers (up to the partition count) or by making
+processing faster (lower `PROCESS_DELAY_MS`) — never by adding consumers *beyond* the partition
+count, which just sit idle.
+
+✅ **CHECKPOINT A2.** You watched lag build under a fast stream and drain after scaling consumers.
 
 ### Exercise 4.3 — EXPERIMENT B: scale consumers, watch rebalancing
 
