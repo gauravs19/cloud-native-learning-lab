@@ -1227,22 +1227,27 @@ These are already wired into `docker-compose.yml` (services `kafka-exporter`, `p
 docker compose up -d kafka-exporter prometheus grafana
 ```
 
-▶️ **Do — open Grafana** (no login needed) → **http://localhost:3000** → dashboard **"Kafka Consumer
-Lag"** (it's pre-provisioned).
+▶️ **Do — open Grafana** (no login needed) → **http://localhost:3000** → dashboard
+**"Kafka · Consumer Lag & Throughput"** (pre-provisioned). It's laid out as a cause→effect story:
+- **Overview** — KPI tiles: Total lag · Produce rate · Consume rate · Consumers.
+- **Throughput (the cause)** — *Produce vs Consume (msg/sec)*: blue = produced, green = consumed.
+- **Lag (the effect)** — Total lag, Consumer-group members (steps when you scale), and Lag by partition.
 
-▶️ **Do — start a stream and watch the graph move:**
+▶️ **Do — start a stream and watch the graphs move:**
 ```powershell
 curl.exe -X POST "http://localhost:8000/stream?rate=250&seconds=120"
 ```
-👀 **Expect.** The **"Consumer lag per partition"** line climbs live; the **"Total lag"** stat goes
-green → orange → red as it grows.
+👀 **Expect.** On **Produce vs Consume**, the **blue** line jumps to ~250/s while **green** stays near
+~15/s — **the gap between them is exactly how fast lag grows**. Below, **Total lag** climbs and its
+tile goes green → yellow → orange → red.
 
-▶️ **Do — drain it and watch the line fall:**
+▶️ **Do — drain it and watch the correlation:**
 ```powershell
 docker compose up -d --scale consumer=3
 ```
-👀 **Expect.** The lag line bends over and drops back toward 0 as 3 consumers clear the backlog —
-**real-time backpressure, visualized.**
+👀 **Expect.** **Members** steps 1 → 3, the **green** consume line rises above **blue**, and **Total
+lag** bends over and falls toward 0. That chain — *more consumers → higher consume rate → lag drains*
+— is the whole lesson, visualized in real time.
 
 🧠 **How it fits the pillars.** This is the **metrics** pillar of observability (FOUNDATIONS §8):
 app/broker state → Prometheus (store) → Grafana (visualize). Lab 3 (v3) expands this to logs (Loki)
